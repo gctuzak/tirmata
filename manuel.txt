@@ -1,0 +1,36 @@
+Eger start.bat dosyasi bilgisayarinizda herhangi bir guvenlik veya yetki kuralindan dolayi calismazsa, sistemi tamamen manuel olarak baslatmak icin asagidaki adimlari sirasiyla uygulayabilirsiniz:
+
+ADIM 1: Komut Istemini (CMD) Acin
+- Windows Baslat menusune tiklayin.
+- "cmd" yazin ve "Komut Istemi" uygulamasini acin.
+
+ADIM 2: Proje Klasorune Gidin
+- CMD ekranina "cd " yazin (bosluk birakin), ardindan cikarttiginiz bu klasoru fareyle surukleyip CMD ekraninin icine birakin ve Enter'a basin.
+- Veya manuel yazin:
+  cd C:\klasorun\bulundugu\tam\yol
+
+ADIM 3: Sanal Ortam Olusturun (Sadece ilk kurulumda 1 kez yapilir)
+- Asagidaki komutu kopyalayip CMD'ye yapistirin ve Enter'a basin:
+  python -m venv venv
+
+ADIM 4: Sanal Ortami Aktiflestirin (Sistemi HER baslattiginizda yapilmalidir)
+- Asagidaki komutu kopyalayip yapistirin ve Enter'a basin:
+  venv\Scripts\activate.bat
+
+  (Basariyla calistiginda komut satirinin en basinda (venv) yazisi belirecektir.)
+
+ADIM 5: Gerekli Kutuphaneleri Yukleyin (Sadece ilk kurulumda 1 kez yapilir)
+- Asagidaki komutu kopyalayip yapistirin ve Enter'a basin:
+  pip install -r requirements.txt
+
+ADIM 6: Sunucuyu Baslatin (Sistemi HER baslattiginizda yapilmalidir)
+- Asagidaki komutu kopyalayip yapistirin ve Enter'a basin:
+  python -m uvicorn main:app --host 0.0.0.0 --port 8000
+
+========================================================================
+SONUC:
+Ekranda "Application startup complete." yazisini gordugunuzde sistem calisiyor demektir.
+- Kasa bilgisayarindan girmek icin tarayiciya yazin: http://localhost:8000/ui/
+- Diger telefon/tabletlerden girmek icin: http://[Bu_Bilgisayarin_Ağ_IP_Adresi]:8000/ui/
+
+Sistemi kapatmak icin CMD penceresini carpiktan (X) kapatabilir veya penceredeyken CTRL+C tuslarina basabilirsiniz.

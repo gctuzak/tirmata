@@ -1,0 +1,9 @@
+.DS_Store
+__pycache__/
+*.pyc
+.venv/
+venv/
+restaurant.db
+*.db
+tirmata_windows_kurulum.zip
+frontend/node_modules/
