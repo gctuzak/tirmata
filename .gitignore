@@ -5,5 +5,7 @@ __pycache__/
 venv/
 restaurant.db
 *.db
+*.db-wal
+*.db-shm
 tirmata_windows_kurulum.zip
 frontend/node_modules/
