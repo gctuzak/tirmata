@@ -145,6 +145,25 @@
   box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.15);
 }
 
+.tree-node {
+  padding: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tree-node:hover {
+  background: #f1f5f9;
+}
+
+.tree-node.active {
+  background: #0f172a;
+  color: #fff;
+  font-weight: bold;
+}
+
 .card-title {
   font-size: 18px;
   font-weight: 800;

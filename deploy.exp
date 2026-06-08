@@ -1,0 +1,31 @@
+#!/usr/bin/expect -f
+set timeout -1
+set password "g13c11t73"
+set ip "192.168.1.120"
+set user "gctuzak"
+
+puts "\n=== Creating directory on remote server ==="
+spawn ssh $user@$ip "mkdir -p ~/tirmata"
+expect {
+    "*?es/no*?" { send "yes\r"; exp_continue }
+    "*?assword:*" { send "$password\r" }
+}
+expect eof
+
+puts "\n=== Copying files to remote server ==="
+spawn rsync -avz --exclude "node_modules" --exclude ".git" --exclude "frontend/node_modules" --exclude "frontend/dist" --exclude "__pycache__" --exclude "data" --exclude ".DS_Store" ./ $user@$ip:~/tirmata/
+expect {
+    "*?es/no*?" { send "yes\r"; exp_continue }
+    "*?assword:*" { send "$password\r" }
+}
+expect eof
+
+puts "\n=== Building and starting Docker containers ==="
+spawn ssh $user@$ip "cd ~/tirmata && echo '$password' | sudo -S docker compose up -d --build || echo '$password' | sudo -S docker-compose up -d --build"
+expect {
+    "*?es/no*?" { send "yes\r"; exp_continue }
+    "*?assword:*" { send "$password\r" }
+}
+expect eof
+
+puts "\n=== Deployment Finished ==="

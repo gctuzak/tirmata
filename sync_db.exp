@@ -1,0 +1,31 @@
+#!/usr/bin/expect -f
+set timeout -1
+set password "g13c11t73"
+set ip "192.168.1.120"
+set user "gctuzak"
+
+puts "\n=== Fixing permissions on data directory ==="
+spawn ssh $user@$ip "echo '$password' | sudo -S chown -R $user:$user ~/tirmata/data"
+expect {
+    "*?es/no*?" { send "yes\r"; exp_continue }
+    "*?assword:*" { send "$password\r" }
+}
+expect eof
+
+puts "\n=== Copying local database to remote server ==="
+spawn scp ./restaurant.db $user@$ip:~/tirmata/data/restaurant.db
+expect {
+    "*?es/no*?" { send "yes\r"; exp_continue }
+    "*?assword:*" { send "$password\r" }
+}
+expect eof
+
+puts "\n=== Restarting Docker container ==="
+spawn ssh $user@$ip "cd ~/tirmata && echo '$password' | sudo -S docker compose restart tirmata || echo '$password' | sudo -S docker-compose restart tirmata"
+expect {
+    "*?es/no*?" { send "yes\r"; exp_continue }
+    "*?assword:*" { send "$password\r" }
+}
+expect eof
+
+puts "\n=== Database Transfer Finished ==="

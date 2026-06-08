@@ -1,0 +1,25 @@
+#!/usr/bin/expect -f
+set timeout -1
+set password "g13c11t73"
+set ip "192.168.1.120"
+set user "gctuzak"
+
+puts "\n=== Installing Tailscale on CasaOS/Raspberry Pi ==="
+spawn ssh $user@$ip "echo '$password' | sudo -S curl -fsSL https://tailscale.com/install.sh | sh"
+expect {
+    "*?es/no*?" { send "yes\r"; exp_continue }
+    "*?assword:*" { send "$password\r"; exp_continue }
+    eof
+}
+
+puts "\n=== Starting Tailscale (Please open the link provided in the terminal to authenticate) ==="
+spawn ssh $user@$ip "echo '$password' | sudo -S tailscale up"
+expect {
+    "*?es/no*?" { send "yes\r"; exp_continue }
+    "*?assword:*" { send "$password\r"; exp_continue }
+    "*To authenticate, visit:*" {
+        # Sadece linki göstermek için expect çıktısını okuyoruz
+        exp_continue
+    }
+    eof
+}

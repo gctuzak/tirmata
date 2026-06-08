@@ -1,0 +1,9 @@
+node_modules
+.git
+frontend/node_modules
+frontend/dist
+__pycache__
+*.pyc
+data/
+restaurant.db
+.DS_Store

@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  tirmata:
+    build: .
+    container_name: tirmata_app
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      # USB yazıcı kullanılacaksa aşağıdaki satırların başındaki '#' işaretini kaldırın:
+      # - /dev/usb/lp0:/dev/usb/lp0
+      # - /var/run/cups:/var/run/cups
+    restart: unless-stopped
+    environment:
+      - RESTAURANT_DB_PATH=/app/data/restaurant.db
+      # Yazıcı ayarları:
+      - KITCHEN_PRINTER_TYPE=network # Ağ yazıcısı için 'network', USB için 'usb' yapın
+      - KITCHEN_PRINTER_IP=192.168.1.101 # Ağ yazıcınızın IP adresi
+      - KITCHEN_PRINTER_PORT=9100
+      - KITCHEN_PRINTER_NAME=Xprinter_XP_80C # Eğer USB seçilirse CUPS yazıcı adı
+    # USB yazıcı kullanılacaksa cihaz erişimi için aşağıdaki satırı açın:
+    # privileged: true
