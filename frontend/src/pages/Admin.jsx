@@ -1,5 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
-import { createCategory, createProduct, createTable, getCategories, getProducts, getTables, updateProduct, getDailyReport } from '../api.js'
+import {
+  createCategory,
+  createProduct,
+  createTable,
+  createUser,
+  deleteTable,
+  getCategories,
+  getDailyReport,
+  getProducts,
+  getTables,
+  getUsers,
+  updateTable,
+  updateProduct,
+  updateUser,
+} from '../api.js'
 
 function formatMoney(v) {
   const n = Number(v || 0)
@@ -10,6 +24,12 @@ function parsePrice(v) {
   const s = String(v || '').replace(',', '.').trim()
   const n = Number(s)
   return Number.isFinite(n) ? n : null
+}
+
+function formatPaymentMethod(method) {
+  if (method === 'cash') return 'Nakit'
+  if (method === 'card') return 'Kart'
+  return 'Bilinmiyor'
 }
 
 function CategoryTreeItem({ category, selectedId, onSelect, level = 0 }) {
@@ -34,7 +54,14 @@ function CategoryTreeItem({ category, selectedId, onSelect, level = 0 }) {
   )
 }
 
-export default function Admin() {
+const roleLabels = {
+  admin: 'Admin',
+  waiter: 'Garson',
+  cashier: 'Kasa',
+  kitchen: 'Mutfak',
+}
+
+export default function Admin({ currentUser }) {
   const [tab, setTab] = useState('menu') // Changed default tab to 'menu'
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -45,6 +72,7 @@ export default function Admin() {
   const [products, setProducts] = useState([])
 
   const [selectedCategoryId, setSelectedCategoryId] = useState(null)
+  const [users, setUsers] = useState([])
 
   const [newTableName, setNewTableName] = useState('')
   
@@ -61,6 +89,11 @@ export default function Admin() {
     return today.toISOString().split('T')[0]
   })
   const [dailyReport, setDailyReport] = useState(null)
+  const [newUsername, setNewUsername] = useState('')
+  const [newUserPassword, setNewUserPassword] = useState('')
+  const [newUserRole, setNewUserRole] = useState('waiter')
+  const [editingUser, setEditingUser] = useState(null)
+  const [editingUserPassword, setEditingUserPassword] = useState('')
 
   function addOptionGroup() {
     setNewProductOptions([...newProductOptions, { name: '', type: 'single', choices: '' }])
@@ -158,18 +191,30 @@ export default function Admin() {
     return products.filter(p => p.category_id === selectedCategoryId)
   }, [products, selectedCategoryId])
 
+  const adminStats = useMemo(
+    () => [
+      { label: 'Toplam Masa', value: tables.length },
+      { label: 'Kategori', value: flatCategories.length },
+      { label: 'Urun', value: products.length },
+      { label: 'Kullanici', value: users.length },
+    ],
+    [flatCategories.length, products.length, tables.length, users.length],
+  )
+
   async function refreshAll() {
-    const [t, c, p, r] = await Promise.all([
+    const [t, c, p, r, u] = await Promise.all([
       getTables(),
       getCategories(),
       getProducts({ activeOnly: false }),
-      getDailyReport(reportDate)
+      getDailyReport(reportDate),
+      getUsers(),
     ])
     setTables(t)
     setCategories(c)
     setFlatCategories(flattenCategoryTree(c))
     setProducts(p)
     setDailyReport(r)
+    setUsers(u)
   }
 
   useEffect(() => {
@@ -191,6 +236,37 @@ export default function Admin() {
       setError('')
       await createTable({ table_name: name })
       setNewTableName('')
+      setTables(await getTables())
+    } catch (e) {
+      setError(e.message || 'Hata')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function onRenameTable(tableId, value, currentName) {
+    const nextName = value.trim()
+    if (!nextName || nextName === currentName) return
+    try {
+      setLoading(true)
+      setError('')
+      await updateTable(tableId, { table_name: nextName })
+      setTables(await getTables())
+    } catch (e) {
+      setError(e.message || 'Hata')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function onDeleteTable(tableId, tableName) {
+    const confirmed = window.confirm(`"${tableName}" masasini silmek istiyor musunuz?`)
+    if (!confirmed) return
+
+    try {
+      setLoading(true)
+      setError('')
+      await deleteTable(tableId)
       setTables(await getTables())
     } catch (e) {
       setError(e.message || 'Hata')
@@ -282,10 +358,53 @@ export default function Admin() {
     }
   }
 
+  async function onCreateUser() {
+    if (!newUsername.trim() || !newUserPassword.trim()) return
+    try {
+      setLoading(true)
+      setError('')
+      await createUser({
+        username: newUsername.trim(),
+        password: newUserPassword,
+        role: newUserRole,
+        is_active: true,
+      })
+      setNewUsername('')
+      setNewUserPassword('')
+      setNewUserRole('waiter')
+      setUsers(await getUsers())
+    } catch (e) {
+      setError(e.message || 'Hata')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function onUpdateManagedUser(userId, payload) {
+    try {
+      setLoading(true)
+      setError('')
+      const updated = await updateUser(userId, payload)
+      setUsers((prev) => prev.map((item) => (item.id === updated.id ? updated : item)))
+      if (editingUser?.id === userId) {
+        setEditingUser(updated)
+        setEditingUserPassword('')
+      }
+    } catch (e) {
+      setError(e.message || 'Hata')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="page">
       <div className="page-header">
-        <div className="title">Yönetim Paneli</div>
+        <div>
+          <div className="eyebrow">Kontrol Merkezi</div>
+          <div className="title">Yonetim Paneli</div>
+          <div className="subtitle">Masa yapisini, menuyu ve gunluk satis gorunumunu tek bir merkezden yonet.</div>
+        </div>
         <div className="actions">
           <button className="btn" type="button" onClick={() => refreshAll()}>
             Yenile
@@ -294,6 +413,15 @@ export default function Admin() {
       </div>
 
       {error ? <div className="alert">{error}</div> : null}
+
+      <div className="stats-grid">
+        {adminStats.map((stat) => (
+          <div className="stat-card" key={stat.label}>
+            <div className="stat-label">{stat.label}</div>
+            <div className="stat-value">{stat.value}</div>
+          </div>
+        ))}
+      </div>
 
       <div className="bar" style={{ marginBottom: 16 }}>
         <button className={tab === 'tables' ? 'btn btn-tab btn-tab-active' : 'btn btn-tab'} type="button" onClick={() => setTab('tables')}>
@@ -304,6 +432,9 @@ export default function Admin() {
         </button>
         <button className={tab === 'reports' ? 'btn btn-tab btn-tab-active' : 'btn btn-tab'} type="button" onClick={() => setTab('reports')}>
           Raporlar
+        </button>
+        <button className={tab === 'users' ? 'btn btn-tab btn-tab-active' : 'btn btn-tab'} type="button" onClick={() => setTab('users')}>
+          Kullanicilar
         </button>
       </div>
 
@@ -322,8 +453,29 @@ export default function Admin() {
           <div className="grid">
             {tables.map((t) => (
               <div key={t.id} className={t.status === 'occupied' ? 'card card-occupied' : 'card'}>
-                <div className="card-title">{t.table_name}</div>
+                <input
+                  className="input"
+                  defaultValue={t.table_name}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') onRenameTable(t.id, e.currentTarget.value, t.table_name)
+                  }}
+                  onBlur={(e) => onRenameTable(t.id, e.currentTarget.value, t.table_name)}
+                  aria-label="Masa Adi"
+                />
                 <div className="muted">{t.status === 'occupied' ? 'Dolu' : 'Boş'}</div>
+                <div className="bar" style={{ marginTop: 12 }}>
+                  <button className="btn btn-secondary" type="button" disabled>
+                    {t.status === 'occupied' ? 'Dolu' : 'Hazir'}
+                  </button>
+                  <button
+                    className="btn"
+                    type="button"
+                    disabled={loading}
+                    onClick={() => onDeleteTable(t.id, t.table_name)}
+                  >
+                    Sil
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -497,36 +649,108 @@ export default function Admin() {
 
           {dailyReport ? (
             <>
-              <div className="grid" style={{ marginBottom: 24 }}>
-                <div className="card" style={{ background: '#e6f2ff', borderColor: '#b3d7ff' }}>
-                  <div className="card-title" style={{ fontSize: 14, color: '#0056b3' }}>Toplam Ciro</div>
-                  <div style={{ fontSize: 24, fontWeight: 'bold', marginTop: 8 }}>{formatMoney(dailyReport.total_revenue)}</div>
+              <div className="stats-grid" style={{ marginBottom: 24 }}>
+                <div className="stat-card">
+                  <div className="stat-label">Toplam Ciro</div>
+                  <div className="stat-value">{formatMoney(dailyReport.total_revenue)}</div>
                 </div>
-                <div className="card" style={{ background: '#e6ffed', borderColor: '#b3ffcc' }}>
-                  <div className="card-title" style={{ fontSize: 14, color: '#006622' }}>Hizmet Verilen Masa/Müşteri</div>
-                  <div style={{ fontSize: 24, fontWeight: 'bold', marginTop: 8 }}>{dailyReport.total_orders}</div>
+                <div className="stat-card">
+                  <div className="stat-label">Kapanan Adisyon</div>
+                  <div className="stat-value">{dailyReport.total_orders}</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-label">Ortalama Adisyon</div>
+                  <div className="stat-value">{formatMoney(dailyReport.average_order_amount)}</div>
                 </div>
               </div>
 
-              <div className="panel-title" style={{ fontSize: 16, marginBottom: 8 }}>Satılan Ürünler Özeti</div>
-              <div className="list">
-                {dailyReport.sold_items && dailyReport.sold_items.length > 0 ? (
-                  dailyReport.sold_items.map((item, idx) => (
-                    <div className="row" key={idx}>
-                      <div className="row-main">
-                        <div className="row-title">{item.product_name}</div>
-                        <div className="muted">{formatMoney(item.total_price)} Toplam</div>
+              <div className="split" style={{ alignItems: 'start' }}>
+                <div className="panel">
+                  <div className="panel-title" style={{ fontSize: 16, marginBottom: 8 }}>En Cok Satan Urunler</div>
+                  <div className="list">
+                    {dailyReport.sold_items && dailyReport.sold_items.length > 0 ? (
+                      dailyReport.sold_items.slice(0, 10).map((item, idx) => (
+                        <div className="row" key={idx}>
+                          <div className="row-main">
+                            <div className="row-title">{item.product_name}</div>
+                            <div className="muted">{formatMoney(item.total_price)} Toplam</div>
+                          </div>
+                          <div className="qty" style={{ padding: '4px 12px', background: '#f1f5f9', borderRadius: 16 }}>
+                            {item.quantity} Adet
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="muted" style={{ padding: 16, textAlign: 'center' }}>
+                        Bu tarihe ait henüz tamamlanmış sipariş bulunmuyor.
                       </div>
-                      <div className="qty" style={{ padding: '4px 12px', background: '#f1f5f9', borderRadius: 16 }}>
-                        {item.quantity} Adet
+                    )}
+                  </div>
+                </div>
+
+                <div className="stack">
+                  <div className="panel">
+                    <div className="panel-title" style={{ fontSize: 16, marginBottom: 8 }}>Ciro Liderleri</div>
+                    <div className="list">
+                      {dailyReport.top_products_by_revenue && dailyReport.top_products_by_revenue.length > 0 ? (
+                        dailyReport.top_products_by_revenue.map((item, idx) => (
+                          <div className="row row-compact" key={idx}>
+                            <div className="row-main">
+                              <div className="row-title">{item.product_name}</div>
+                              <div className="muted">{item.quantity} adet</div>
+                            </div>
+                            <div style={{ fontWeight: 800, color: '#0f172a' }}>{formatMoney(item.total_price)}</div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="muted">Veri yok</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="panel">
+                    <div className="panel-title" style={{ fontSize: 16, marginBottom: 8 }}>Odeme Dagilimi</div>
+                    <div className="list">
+                      {dailyReport.payment_breakdown && dailyReport.payment_breakdown.length > 0 ? (
+                        dailyReport.payment_breakdown.map((payment) => (
+                          <div className="row row-compact" key={payment.payment_method}>
+                            <div className="row-main">
+                              <div className="row-title">{formatPaymentMethod(payment.payment_method)}</div>
+                              <div className="muted">{payment.order_count} adisyon</div>
+                            </div>
+                            <div style={{ fontWeight: 800, color: '#0f172a' }}>{formatMoney(payment.total_amount)}</div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="muted">Veri yok</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="panel">
+                    <div className="panel-title" style={{ fontSize: 16, marginBottom: 8 }}>Degisiklik ve Iptal Ozeti</div>
+                    <div className="grid grid-tight">
+                      <div className="card">
+                        <div className="card-title" style={{ fontSize: 14 }}>Toplam Degisiklik</div>
+                        <div style={{ fontSize: 24, fontWeight: 800, color: '#0f172a' }}>
+                          {dailyReport.change_summary?.total_change_events || 0}
+                        </div>
+                      </div>
+                      <div className="card">
+                        <div className="card-title" style={{ fontSize: 14 }}>Iptal Edilen Adet</div>
+                        <div style={{ fontSize: 24, fontWeight: 800, color: '#0f172a' }}>
+                          {dailyReport.change_summary?.cancelled_items || 0}
+                        </div>
+                      </div>
+                      <div className="card">
+                        <div className="card-title" style={{ fontSize: 14 }}>Iptal Tutar Etkisi</div>
+                        <div style={{ fontSize: 24, fontWeight: 800, color: '#0f172a' }}>
+                          {formatMoney(dailyReport.change_summary?.cancelled_value || 0)}
+                        </div>
                       </div>
                     </div>
-                  ))
-                ) : (
-                  <div className="muted" style={{ padding: 16, textAlign: 'center' }}>
-                    Bu tarihe ait henüz tamamlanmış sipariş bulunmuyor.
                   </div>
-                )}
+                </div>
               </div>
             </>
           ) : (
@@ -535,16 +759,82 @@ export default function Admin() {
         </div>
       ) : null}
 
+      {tab === 'users' ? (
+        <div className="split" style={{ gridTemplateColumns: '1.1fr 1.4fr', alignItems: 'start' }}>
+          <div className="panel">
+            <div className="panel-title">Yeni Kullanici</div>
+            <div className="stack">
+              <input className="input" value={newUsername} onChange={(e) => setNewUsername(e.target.value)} placeholder="Kullanici adi" />
+              <input className="input" type="password" value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} placeholder="Sifre" />
+              <select className="input" value={newUserRole} onChange={(e) => setNewUserRole(e.target.value)}>
+                {Object.entries(roleLabels).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+              <button className="btn" type="button" disabled={loading} onClick={onCreateUser}>
+                Kullanici Ekle
+              </button>
+            </div>
+            <div className="muted" style={{ marginTop: 12 }}>
+              Sifreler basit kapali devre kullanim mantigiyla tutulur. Ilk varsayilan admin: admin / 1234
+            </div>
+          </div>
+
+          <div className="panel">
+            <div className="panel-title">Kullanici Listesi</div>
+            <div className="list">
+              {users.map((user) => (
+                <div className="row" key={user.id}>
+                  <div className="row-main">
+                    <div className="row-title">{user.username}</div>
+                    <div className="muted">
+                      {roleLabels[user.role] || user.role} • {user.is_active ? 'Aktif' : 'Pasif'}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    <select
+                      className="input"
+                      style={{ width: 130, minHeight: 42 }}
+                      value={user.role}
+                      onChange={(e) => onUpdateManagedUser(user.id, { role: e.target.value })}
+                      disabled={loading}
+                    >
+                      {Object.entries(roleLabels).map(([value, label]) => (
+                        <option key={value} value={value}>{label}</option>
+                      ))}
+                    </select>
+                    <button
+                      className={user.is_active ? 'btn btn-secondary' : 'btn'}
+                      type="button"
+                      disabled={loading || user.id === currentUser?.id}
+                      onClick={() => onUpdateManagedUser(user.id, { is_active: !user.is_active })}
+                    >
+                      {user.is_active ? 'Pasif Yap' : 'Aktif Yap'}
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      type="button"
+                      onClick={() => {
+                        setEditingUser(user)
+                        setEditingUserPassword('')
+                      }}
+                    >
+                      Sifre
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {/* Edit Options Modal */}
       {editingProduct && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, 
-          backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16
-        }}>
-          <div style={{ background: 'white', borderRadius: 8, padding: 24, width: '100%', maxWidth: 600, maxHeight: '90vh', overflowY: 'auto' }}>
-            <h2 style={{ marginTop: 0, marginBottom: 8 }}>Opsiyonları Düzenle: {editingProduct.name}</h2>
-            <div style={{ marginBottom: 16, color: '#666' }}>Mevcut opsiyonları silebilir, değiştirebilir veya yeni ekleyebilirsiniz.</div>
+        <div className="modal-backdrop">
+          <div className="modal-card">
+            <h2 className="modal-title">Opsiyonlari Duzenle: {editingProduct.name}</h2>
+            <div className="modal-subtitle">Mevcut opsiyonlari silebilir, degistirebilir veya yeni ekleyebilirsiniz.</div>
             
             <div style={{ padding: '16px', border: '1px solid var(--border)', borderRadius: '4px', background: 'var(--bg)', marginBottom: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -578,7 +868,7 @@ export default function Admin() {
               {editingOptions.length === 0 && <div className="muted" style={{ fontSize: 14 }}>Bu ürüne henüz opsiyon eklenmemiş.</div>}
             </div>
 
-            <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
+            <div className="modal-actions">
               <button 
                 type="button" 
                 className="btn btn-secondary" 
@@ -593,6 +883,42 @@ export default function Admin() {
                 style={{ flex: 2, background: '#28a745', color: 'white', border: 'none' }}
                 onClick={saveEditedOptions}
                 disabled={loading}
+              >
+                Kaydet
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingUser && (
+        <div className="modal-backdrop">
+          <div className="modal-card modal-sm">
+            <h2 className="modal-title">Sifre Guncelle: {editingUser.username}</h2>
+            <div className="modal-subtitle">Bu kullanici icin yeni sifre belirleyin.</div>
+            <div className="stack">
+              <input
+                className="input"
+                type="password"
+                placeholder="Yeni sifre"
+                value={editingUserPassword}
+                onChange={(e) => setEditingUserPassword(e.target.value)}
+              />
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setEditingUser(null)}>
+                Iptal
+              </button>
+              <button
+                type="button"
+                className="btn"
+                style={{ flex: 2 }}
+                disabled={loading || editingUserPassword.trim().length < 3}
+                onClick={async () => {
+                  await onUpdateManagedUser(editingUser.id, { password: editingUserPassword.trim() })
+                  setEditingUser(null)
+                  setEditingUserPassword('')
+                }}
               >
                 Kaydet
               </button>

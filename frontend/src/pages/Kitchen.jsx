@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { getKitchenOpenItems, prepareOrderItem } from '../api.js'
 
 function formatMoney(v) {
@@ -10,6 +10,16 @@ export default function Kitchen() {
   const [items, setItems] = useState([])
   const [error, setError] = useState('')
   const [loadingId, setLoadingId] = useState(null)
+
+  const kitchenStats = useMemo(() => {
+    const uniqueTables = new Set(items.map((item) => item.table_name))
+    const totalQty = items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
+    return [
+      { label: 'Acik Kalem', value: items.length },
+      { label: 'Toplam Adet', value: totalQty },
+      { label: 'Bekleyen Masa', value: uniqueTables.size },
+    ]
+  }, [items])
 
   async function refresh() {
     const data = await getKitchenOpenItems()
@@ -53,7 +63,11 @@ export default function Kitchen() {
   return (
     <div className="page">
       <div className="page-header">
-        <div className="title">Mutfak</div>
+        <div>
+          <div className="eyebrow">Uretim Takibi</div>
+          <div className="title">Mutfak Ekrani</div>
+          <div className="subtitle">Gelen siparisleri anlik izle, hazirlanan urunleri akistan cikart.</div>
+        </div>
         <div className="actions">
           <button className="btn" type="button" onClick={() => refresh()}>
             Yenile
@@ -62,6 +76,15 @@ export default function Kitchen() {
       </div>
 
       {error ? <div className="alert">{error}</div> : null}
+
+      <div className="stats-grid">
+        {kitchenStats.map((stat) => (
+          <div className="stat-card" key={stat.label}>
+            <div className="stat-label">{stat.label}</div>
+            <div className="stat-value">{stat.value}</div>
+          </div>
+        ))}
+      </div>
 
       <div className="panel">
         <div className="panel-title">Açık Kalemler</div>

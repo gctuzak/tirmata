@@ -77,8 +77,7 @@ def print_kitchen_receipt(table_name: str, items: list[dict]):
                 time.sleep(0.5) 
             print(f"Mutfak Fişi Yazdırıldı (Network: {PRINTER_IP}:{PRINTER_PORT})")
         except Exception as e:
-            print(f"Yazıcı bağlantı hatası ({PRINTER_IP}): {e}")
-            _simulate_print(data)
+            raise RuntimeError(f"Yazıcı bağlantı hatası ({PRINTER_IP}): {e}") from e
             
     elif PRINTER_TYPE == "usb" and PRINTER_NAME:
         try:
@@ -89,10 +88,9 @@ def print_kitchen_receipt(table_name: str, items: list[dict]):
             subprocess.run(["lpr", "-P", PRINTER_NAME, "-o", "raw", tmp_file], check=True)
             print(f"Mutfak Fişi Yazdırıldı (USB/CUPS: {PRINTER_NAME})")
         except Exception as e:
-            print(f"USB Yazıcı hatası ({PRINTER_NAME}): {e}")
-            _simulate_print(data)
+            raise RuntimeError(f"USB Yazıcı hatası ({PRINTER_NAME}): {e}") from e
     else:
-        _simulate_print(data)
+        raise RuntimeError("Yazıcı ayarı eksik veya desteklenmeyen yazıcı tipi seçildi.")
 
 def _simulate_print(data: bytes):
     print("\n=== MUTFAK YAZICISI SIMULASYONU ===")

@@ -21,6 +21,36 @@ function StatusBadge({ status }) {
   return <span className={cls}>{text}</span>
 }
 
+function normalizeSelectedOptions(options) {
+  const groups = []
+
+  for (const [groupName, value] of Object.entries(options)) {
+    if (Array.isArray(value)) {
+      const normalizedValues = [...new Set(value.map((item) => item.trim()).filter(Boolean))].sort((a, b) =>
+        a.localeCompare(b, 'tr'),
+      )
+      if (normalizedValues.length > 0) {
+        groups.push(`${groupName}: ${normalizedValues.join(', ')}`)
+      }
+      continue
+    }
+
+    if (value) {
+      groups.push(`${groupName}: ${String(value).trim()}`)
+    }
+  }
+
+  return groups.length > 0 ? groups.join(' | ') : null
+}
+
+const CHANGE_REASON_OPTIONS = [
+  'Musteri vazgecti',
+  'Yanlis girildi',
+  'Ikram',
+  'Personel hatasi',
+  'Diger',
+]
+
 export default function Waiter() {
   const [tables, setTables] = useState([])
   const [categories, setCategories] = useState([]) // This is now a tree
@@ -35,6 +65,9 @@ export default function Waiter() {
   // Product options modal state
   const [optionsModalProduct, setOptionsModalProduct] = useState(null)
   const [selectedOptions, setSelectedOptions] = useState({})
+  const [changeReasonModal, setChangeReasonModal] = useState(null)
+  const [selectedChangeReason, setSelectedChangeReason] = useState('')
+  const [customChangeReason, setCustomChangeReason] = useState('')
 
   // Current level of categories based on path
   const currentCategories = useMemo(() => {
@@ -72,6 +105,15 @@ export default function Waiter() {
   const emptyTables = useMemo(
     () => tables.filter((t) => t.status === 'empty' && t.id !== selectedTableId),
     [tables, selectedTableId],
+  )
+
+  const waiterStats = useMemo(
+    () => [
+      { label: 'Bos Masa', value: tables.filter((t) => t.status === 'empty').length },
+      { label: 'Dolu Masa', value: tables.filter((t) => t.status === 'occupied').length },
+      { label: 'Secili Urun', value: products.length },
+    ],
+    [products.length, tables],
   )
 
   async function refreshTables() {
@@ -192,18 +234,9 @@ export default function Waiter() {
   
   async function submitOptionsModal() {
     if (!optionsModalProduct) return
-    
-    // Format selected options as a string
-    const optsStrArr = []
-    for (const [groupName, value] of Object.entries(selectedOptions)) {
-      if (Array.isArray(value)) {
-        if (value.length > 0) optsStrArr.push(`${groupName}: ${value.join(', ')}`)
-      } else if (value) {
-        optsStrArr.push(`${groupName}: ${value}`)
-      }
-    }
-    const selected_options = optsStrArr.length > 0 ? optsStrArr.join(' | ') : null
-    
+
+    const selected_options = normalizeSelectedOptions(selectedOptions)
+
     await submitAddProduct(optionsModalProduct.id, 1, selected_options)
     setOptionsModalProduct(null)
     setSelectedOptions({})
@@ -244,6 +277,16 @@ export default function Waiter() {
 
   async function onSetQty(itemId, qty) {
     if (selectedTableId == null) return
+    const currentItem = adisyon?.items.find((item) => item.id === itemId)
+    if (!currentItem) return
+
+    if (currentItem.is_printed && qty < Number(currentItem.quantity)) {
+      setSelectedChangeReason('')
+      setCustomChangeReason('')
+      setChangeReasonModal({ itemId, qty, currentItem })
+      return
+    }
+
     try {
       setLoading(true)
       setError('')
@@ -252,7 +295,42 @@ export default function Waiter() {
       await refreshTables()
       if (a == null) {
         await refreshAdisyon(selectedTableId)
+      } else if (currentItem.is_printed && qty > Number(currentItem.quantity)) {
+        alert('Ek adet yeni satir olarak eklendi. Siparisi tekrar gonderince mutfaga/bara yeniden basilir.')
       }
+    } catch (e) {
+      setError(e.message || 'Hata')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+
+  async function submitChangeReason() {
+    if (!changeReasonModal) return
+
+    const reason =
+      selectedChangeReason === 'Diger' ? customChangeReason.trim() : selectedChangeReason.trim()
+    if (!reason) {
+      setError('Basili kalem degisikligi icin sebep secilmelidir.')
+      return
+    }
+
+    try {
+      setLoading(true)
+      setError('')
+      const a = await updateOrderItem(changeReasonModal.itemId, {
+        quantity: changeReasonModal.qty,
+        change_reason: reason,
+      })
+      setAdisyon(a)
+      await refreshTables()
+      if (a == null) {
+        await refreshAdisyon(selectedTableId)
+      }
+      setChangeReasonModal(null)
+      setSelectedChangeReason('')
+      setCustomChangeReason('')
     } catch (e) {
       setError(e.message || 'Hata')
     } finally {
@@ -281,7 +359,11 @@ export default function Waiter() {
   return (
     <div className="page">
       <div className="page-header">
-        <div className="title">Garson</div>
+        <div>
+          <div className="eyebrow">Servis Akisi</div>
+          <div className="title">Garson Ekrani</div>
+          <div className="subtitle">Masalari yonet, siparisi hizlica olustur ve mutfaga tek dokunusla gonder.</div>
+        </div>
         <div className="actions">
           <button className="btn" type="button" onClick={() => refreshTables()}>
             Masaları Yenile
@@ -290,6 +372,15 @@ export default function Waiter() {
       </div>
 
       {error ? <div className="alert">{error}</div> : null}
+
+      <div className="stats-grid">
+        {waiterStats.map((stat) => (
+          <div className="stat-card" key={stat.label}>
+            <div className="stat-label">{stat.label}</div>
+            <div className="stat-value">{stat.value}</div>
+          </div>
+        ))}
+      </div>
 
       {selectedTableId == null ? (
         <div className="grid">
@@ -307,7 +398,18 @@ export default function Waiter() {
         </div>
       ) : (
         <div className="stack">
-          <div className="bar" style={{ flexWrap: 'wrap', marginBottom: '12px' }}>
+          <div className="hero-strip">
+            <div>
+              <div className="hero-strip-label">Secili Masa</div>
+              <div className="hero-strip-title">{selectedTable ? selectedTable.table_name : `Masa #${selectedTableId}`}</div>
+            </div>
+            <div className="hero-strip-actions">
+              <span className="meta-pill">{adisyon ? `${adisyon.items.length} kalem` : 'Yeni adisyon'}</span>
+              <span className="meta-pill">{adisyon ? formatMoney(adisyon.total_amount) : '0.00 ₺'}</span>
+            </div>
+          </div>
+
+          <div className="bar toolbar-row">
             <button className="btn btn-secondary" type="button" onClick={() => setSelectedTableId(null)}>
               ← Masalar
             </button>
@@ -350,7 +452,7 @@ export default function Waiter() {
                       <button
                         key={p.id}
                         type="button"
-                        className="card"
+                        className="card product-card"
                         disabled={loading}
                         onClick={() => onAddProduct(p)}
                       >
@@ -368,6 +470,11 @@ export default function Waiter() {
               {adisyon ? (
                 <>
                   <div className="muted">{`Sipariş #${adisyon.id}`}</div>
+                  {adisyon.has_changes ? (
+                    <div className="alert alert-warning">
+                      Bu adisyonda mutfaga iletilmis kalemler uzerinde degisiklik yapildi. Kasa ekrani bu kayitlari gorecek.
+                    </div>
+                  ) : null}
                   <div className="list">
                     {adisyon.items.map((it) => (
                       <div className="row" key={it.id}>
@@ -379,6 +486,11 @@ export default function Waiter() {
                             </div>
                           )}
                           <div className="muted">{formatMoney(it.unit_price)}</div>
+                          <div className="inline-pills">
+                            <span className={it.is_printed ? 'status-chip status-chip-amber' : 'status-chip status-chip-blue'}>
+                              {it.is_printed ? 'Gonderildi' : 'Yeni ek'}
+                            </span>
+                          </div>
                         </div>
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                           <button
@@ -402,6 +514,29 @@ export default function Waiter() {
                       </div>
                     ))}
                   </div>
+                  {adisyon.change_logs && adisyon.change_logs.length > 0 ? (
+                    <div className="change-log-panel">
+                      <div className="panel-title" style={{ marginBottom: 10 }}>Degisiklik Kayitlari</div>
+                      <div className="list">
+                        {adisyon.change_logs.map((log) => (
+                          <div className="row row-compact" key={log.id}>
+                            <div className="row-main">
+                              <div className="row-title">
+                                {log.action === 'cancelled' ? 'Iptal/Azaltma' : 'Ek Adet'}
+                              </div>
+                              <div className="muted">
+                                {log.quantity} x {log.product_name}
+                                {log.selected_options ? ` • ${log.selected_options}` : ''}
+                              </div>
+                              {log.reason ? <div className="muted">Sebep: {log.reason}</div> : null}
+                              <div className="muted">{log.note}</div>
+                            </div>
+                            <div className="muted">{log.changed_by_username || 'Bilinmiyor'}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="total">
                     <div>Toplam</div>
                     <div className="total-amount">{formatMoney(adisyon.total_amount)}</div>
@@ -443,19 +578,15 @@ export default function Waiter() {
         </div>
       )}
       {optionsModalProduct && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, 
-          backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16
-        }}>
-          <div style={{ background: 'white', borderRadius: 8, padding: 24, width: '100%', maxWidth: 400, maxHeight: '90vh', overflowY: 'auto' }}>
-            <h2 style={{ marginTop: 0, marginBottom: 8 }}>{optionsModalProduct.name}</h2>
-            <div style={{ marginBottom: 16, color: '#666' }}>Lütfen seçenekleri belirleyin:</div>
+        <div className="modal-backdrop">
+          <div className="modal-card modal-sm">
+            <h2 className="modal-title">{optionsModalProduct.name}</h2>
+            <div className="modal-subtitle">Lutfen urune ait secenekleri belirleyin.</div>
             
             {optionsModalProduct.options.map((opt, i) => (
-              <div key={i} style={{ marginBottom: 16, padding: 12, border: '1px solid #eee', borderRadius: 6 }}>
-                <div style={{ fontWeight: 'bold', marginBottom: 8 }}>{opt.name} {opt.type === 'multiple' ? '(Çoklu Seçim)' : '(Tekli Seçim)'}</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              <div key={i} className="option-group">
+                <div className="option-group-title">{opt.name} {opt.type === 'multiple' ? '(Coklu Secim)' : '(Tekli Secim)'}</div>
+                <div className="option-choices">
                   {opt.choices.map((c, j) => {
                     const isSelected = opt.type === 'multiple' 
                       ? (selectedOptions[opt.name] || []).includes(c)
@@ -465,14 +596,8 @@ export default function Waiter() {
                       <button 
                         key={j} 
                         type="button"
+                        className={isSelected ? 'option-chip option-chip-selected' : 'option-chip'}
                         onClick={() => handleOptionChange(opt.name, c, opt.type === 'multiple')}
-                        style={{
-                          padding: '8px 12px',
-                          borderRadius: 4,
-                          border: isSelected ? '2px solid #007bff' : '1px solid #ccc',
-                          background: isSelected ? '#e6f2ff' : 'white',
-                          cursor: 'pointer'
-                        }}
                       >
                         {c}
                       </button>
@@ -482,7 +607,7 @@ export default function Waiter() {
               </div>
             ))}
             
-            <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
+            <div className="modal-actions">
               <button 
                 type="button" 
                 className="btn btn-secondary" 
@@ -496,12 +621,74 @@ export default function Waiter() {
               </button>
               <button 
                 type="button" 
-                className="btn" 
-                style={{ flex: 2, background: '#28a745', color: 'white', border: 'none' }}
+                className="btn btn-green" 
+                style={{ flex: 2 }}
                 onClick={submitOptionsModal}
                 disabled={loading}
               >
                 Ekle
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {changeReasonModal && (
+        <div className="modal-backdrop">
+          <div className="modal-card modal-sm">
+            <h2 className="modal-title">Degisiklik Sebebi</h2>
+            <div className="modal-subtitle">
+              Bu kalem mutfaga/bara iletildi. Azaltma veya silme islemi icin sebep secin.
+            </div>
+
+            <div className="reason-grid">
+              {CHANGE_REASON_OPTIONS.map((reason) => (
+                <button
+                  key={reason}
+                  type="button"
+                  className={selectedChangeReason === reason ? 'option-chip option-chip-selected' : 'option-chip'}
+                  onClick={() => setSelectedChangeReason(reason)}
+                >
+                  {reason}
+                </button>
+              ))}
+            </div>
+
+            {selectedChangeReason === 'Diger' ? (
+              <input
+                className="input"
+                type="text"
+                value={customChangeReason}
+                onChange={(e) => setCustomChangeReason(e.target.value)}
+                placeholder="Sebebi yazin"
+                style={{ marginTop: 14 }}
+              />
+            ) : null}
+
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ flex: 1 }}
+                onClick={() => {
+                  setChangeReasonModal(null)
+                  setSelectedChangeReason('')
+                  setCustomChangeReason('')
+                }}
+              >
+                Vazgec
+              </button>
+              <button
+                type="button"
+                className="btn btn-green"
+                style={{ flex: 2 }}
+                onClick={submitChangeReason}
+                disabled={
+                  loading ||
+                  !selectedChangeReason ||
+                  (selectedChangeReason === 'Diger' && customChangeReason.trim().length < 2)
+                }
+              >
+                Kaydet
               </button>
             </div>
           </div>
